@@ -2,7 +2,6 @@
 
 # Environment Files
 **/.env
-!**/.env.example
 
 # Dependencies
 **/node_modules/
