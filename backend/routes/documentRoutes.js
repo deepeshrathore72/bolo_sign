@@ -37,11 +37,10 @@ const upload = multer({
   }
 });
 
-// Calculate SHA-256 hash of a file
-const calculateFileHash = (filePath) => {
-  const fileBuffer = fs.readFileSync(filePath);
+// Calculate SHA-256 hash of a buffer
+const calculateBufferHash = (buffer) => {
   const hashSum = crypto.createHash('sha256');
-  hashSum.update(fileBuffer);
+  hashSum.update(buffer);
   return hashSum.digest('hex');
 };
 
@@ -54,19 +53,28 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
       return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
-    const filePath = req.file.path;
-    const fileHash = calculateFileHash(filePath);
+    // Read the file into buffer
+    const pdfBuffer = fs.readFileSync(req.file.path);
+    const fileHash = calculateBufferHash(pdfBuffer);
 
     const document = new Document({
       originalName: req.file.originalname,
       filename: req.file.filename,
-      path: req.file.path,
+      path: req.file.path, // Keep for reference, but not required
       size: req.file.size,
       mimeType: req.file.mimetype,
-      originalHash: fileHash
+      originalHash: fileHash,
+      originalPdfData: pdfBuffer // Store PDF in MongoDB
     });
 
     await document.save();
+
+    // Delete the temporary file after saving to DB
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (err) {
+      console.error('Error deleting temp file:', err);
+    }
 
     res.json({
       id: document._id,
@@ -77,6 +85,14 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
     });
   } catch (error) {
     console.error('Upload error:', error);
+    // Clean up temp file on error
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (err) {
+        console.error('Error deleting temp file on error:', err);
+      }
+    }
     res.status(500).json({ error: 'Failed to upload document' });
   }
 });
@@ -101,8 +117,8 @@ router.post('/:id/sign', async (req, res) => {
       return res.status(400).json({ error: 'Document is already signed' });
     }
 
-    // Load the PDF
-    const pdfBytes = fs.readFileSync(document.path);
+    // Load the PDF from database
+    const pdfBytes = document.originalPdfData;
     const pdfDoc = await PDFDocument.load(pdfBytes);
 
     // Get the first page
@@ -209,23 +225,20 @@ router.post('/:id/sign', async (req, res) => {
 
     // Save the signed PDF
     const signedPdfBytes = await pdfDoc.save();
-    const signedFilename = 'signed_' + document.filename;
-    const signedPath = path.join(__dirname, '../uploads', signedFilename);
-
-    fs.writeFileSync(signedPath, signedPdfBytes);
+    const signedPdfBuffer = Buffer.from(signedPdfBytes);
 
     // Calculate hash of signed PDF
-    const signedHash = calculateFileHash(signedPath);
+    const signedHash = calculateBufferHash(signedPdfBuffer);
 
-    // Update document record
+    // Update document record with signed PDF data
     document.isSigned = true;
     document.signedAt = new Date();
     document.signedHash = signedHash;
+    document.signedPdfData = signedPdfBuffer;
     await document.save();
 
     res.json({
       id: document._id,
-      signedPdfUrl: `/uploads/${signedFilename}`,
       signedHash: signedHash,
       signedAt: document.signedAt
     });
@@ -278,6 +291,33 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('Get documents error:', error);
     res.status(500).json({ error: 'Failed to get documents' });
+  }
+});
+
+// @route   GET /api/documents/:id/download
+// @desc    Download the signed PDF
+// @access  Public
+router.get('/:id/download', async (req, res) => {
+  try {
+    const document = await Document.findById(req.params.id);
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    if (!document.isSigned || !document.signedPdfData) {
+      return res.status(400).json({ error: 'Document is not signed yet' });
+    }
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="signed_${document.originalName}"`);
+    res.setHeader('Content-Length', document.signedPdfData.length);
+
+    // Send the PDF buffer
+    res.send(document.signedPdfData);
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Failed to download document' });
   }
 });
 

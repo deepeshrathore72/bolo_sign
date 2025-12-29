@@ -11,7 +11,7 @@ const documentSchema = new mongoose.Schema({
   },
   path: {
     type: String,
-    required: true
+    required: false // Not required anymore as we'll store in DB
   },
   size: {
     type: Number,
@@ -35,6 +35,16 @@ const documentSchema = new mongoose.Schema({
   },
   signedAt: {
     type: Date,
+    default: null
+  },
+  // Store original PDF data
+  originalPdfData: {
+    type: Buffer,
+    required: true
+  },
+  // Store signed PDF data
+  signedPdfData: {
+    type: Buffer,
     default: null
   },
   createdAt: {

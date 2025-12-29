@@ -422,6 +422,7 @@ const PDFViewer = () => {
   const [uploadedDocumentId, setUploadedDocumentId] = useState(null);
   const [isSigning, setIsSigning] = useState(false);
   const [signedPdfUrl, setSignedPdfUrl] = useState(null);
+  const [isDocumentSigned, setIsDocumentSigned] = useState(false);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
 
   const showNotification = (message, severity = 'info') => {
@@ -454,6 +455,7 @@ const PDFViewer = () => {
       setPdfFile(null); // Clear existing PDF first
       setDroppedFields([]); // Clear fields
       setSignedPdfUrl(null); // Clear signed PDF
+      setIsDocumentSigned(false);
       setNumPages(null); // Reset page count
       setPageNumber(1); // Reset to first page
       
@@ -482,6 +484,7 @@ const PDFViewer = () => {
     setPdfFile(null); // Clear existing PDF first
     setDroppedFields([]); // Clear fields
     setSignedPdfUrl(null); // Clear signed PDF
+    setIsDocumentSigned(false);
     setUploadedDocumentId(null); // Clear document ID
     setNumPages(null); // Reset page count
     setPageNumber(1); // Reset to first page
@@ -687,7 +690,7 @@ const PDFViewer = () => {
         fields: fieldsData,
       });
 
-      setSignedPdfUrl(response.signedPdfUrl);
+      setIsDocumentSigned(true);
       showNotification('Document signed successfully!', 'success');
     } catch (error) {
       console.error('Signing failed:', error);
@@ -783,8 +786,18 @@ const PDFViewer = () => {
               <Button variant="contained" color="primary" fullWidth onClick={handleSignDocument} disabled={isSigning} sx={{ mb: 1, fontSize: { xs: '0.75rem', md: '0.875rem' } }} size="small">
                 {isSigning ? 'Signing...' : 'Sign Document'}
               </Button>
-              {signedPdfUrl && (
-                <Button variant="outlined" color="success" fullWidth component="a" href={`http://localhost:5000${signedPdfUrl}`} target="_blank" rel="noopener noreferrer" size="small" sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}>
+              {isDocumentSigned && (
+                <Button 
+                  variant="outlined" 
+                  color="success" 
+                  fullWidth 
+                  onClick={() => {
+                    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+                    window.open(`${apiUrl}/api/documents/${uploadedDocumentId}/download`, '_blank');
+                  }}
+                  size="small" 
+                  sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+                >
                   Download Signed PDF
                 </Button>
               )}
